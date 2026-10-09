@@ -257,6 +257,30 @@ describe("aprovação encerra a revisão", () => {
     const id = await approved();
     expect((await post(`/scripts/${id}/approve`, "brand")).status).toBe(409);
   });
+
+  // Duas requisições ao mesmo tempo não podem ler o mesmo estado e as duas gravarem.
+  it.each([
+    ["aprovação chega primeiro", "approve"],
+    ["pedido de alteração chega primeiro", "change-request"],
+  ] as const)("aprovação e pedido de alteração em paralelo: só um vence (%s)", async (_label, first) => {
+    const id = await submitScript();
+    const approveReq = () => post(`/scripts/${id}/approve`, "brand");
+    const changeReq = () => requestChanges(id, validRequest);
+    const [a, b] = await Promise.all(first === "approve" ? [approveReq(), changeReq()] : [changeReq(), approveReq()]);
+    const [approveRes, changeRes] = first === "approve" ? [a, b] : [b, a];
+
+    expect([approveRes.status, changeRes.status].sort()).toEqual([200, 409]);
+    const view = await get(id);
+    if (approveRes.status === 200) {
+      expect(view.status).toBe("approved");
+      expect(view.change_requests).toEqual([]);
+      expect((await requestChanges(id, validRequest)).status).toBe(409);
+      expect((await get(id)).status).toBe("approved");
+    } else {
+      expect(view.status).toBe("changes_requested");
+      expect(view.approved_version).toBeNull();
+    }
+  });
 });
 
 describe("transições fora de ordem e atores", () => {

@@ -250,7 +250,7 @@ HTTP 403
 
 - **Autenticação de verdade**: hoje o papel vem de um cabeçalho em que se confia. Com mais tempo, o ator viria de um token e o roteiro teria dono (criador e marca da campanha).
 - **Persistência**: só memória. O próximo passo seria `node:sqlite` com versões e pedidos em tabelas só de inserção.
-- **Concorrência**: não há controle de versão otimista. Se a marca aprovar enquanto o criador reenvia, vence quem gravar primeiro. Eu exigiria `If-Match` com a versão atual na aprovação e no pedido de alteração.
+- **Concorrência**: dentro de um processo, cada transição lê, valida e grava sem nenhum `await` no meio, então é atômica: se aprovação e pedido de alteração chegam juntos, um vence e o outro recebe 409 (há teste para isso). Com vários processos ou um banco de verdade isso não basta; eu usaria controle otimista, com `If-Match` e a versão atual na aprovação e no pedido de alteração.
 - **Prazo vencido sem resposta**: o pedido só aparece como `overdue`; nada expira sozinho nem notifica ninguém. Uma regra de negócio (cancelar a campanha, avisar a marca) precisaria de decisão de produto.
 - **Fuso fixo**: todas as marcas estão em `America/Sao_Paulo`. Com mais tempo o fuso seria um campo da marca, passado para `deadline.ts` em vez da constante `BRAND_TIME_ZONE`.
 - **Aprovação parcial ou comentários por trecho** do roteiro não existem; o motivo é um texto livre.

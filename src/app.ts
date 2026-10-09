@@ -82,16 +82,19 @@ export function createApp(deps: { repo: ScriptRepository; clock: Clock }) {
   const app = new Hono();
 
   // Carrega o roteiro, aplica a transição do domínio e grava o resultado.
+  // O corpo é lido antes: entre carregar e gravar não há await, então duas
+  // requisições simultâneas não partem do mesmo estado e a segunda recebe 409.
   async function transition(
     c: Context,
     run: (script: Script, actor: Actor, body: Record<string, unknown>, now: Date) => Result<Script>,
   ) {
     const actor = readActor(c);
     if (!actor) return c.json(ACTOR_REQUIRED, 400);
+    const body = await readBody(c);
     const script = repo.find(c.req.param("id")!);
     if (!script) return c.json({ error: "roteiro não encontrado" }, 404);
     const now = clock.now();
-    const result = run(script, actor, await readBody(c), now);
+    const result = run(script, actor, body, now);
     if (!result.ok) return errorResponse(c, result.error);
     repo.save(result.value);
     return c.json(view(result.value, now), 200);
