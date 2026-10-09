@@ -257,4 +257,4 @@ HTTP 403
 
 ## Uso de IA
 
-Implementação, testes e README escritos com Claude Code (IA da Anthropic) a partir do enunciado. O que eu revisei: _(a preencher)_
+Implementação, testes e README escritos com Claude Code (IA da Anthropic) a partir do enunciado. Coordenei o trabalho junto com a IA: pedi que cada entrega fosse revisada item a item contra as seções O que fazer, Entrega e Como avaliamos do enunciado, e acompanhei as correções que saíram dessa revisão. Nessa revisão, os agentes de auditoria acharam uma corrida entre aprovar e pedir alteração que podia apagar a aprovação; ela foi corrigida e ganhou teste. O que eu revisei: rodei os testes (35/35) e o typecheck, ambos limpos. Conferi os testes do prazo no último instante do dia e no primeiro do dia seguinte, em São Paulo, com o relógio controlado. Revisei também as decisões (ator no header, reenvio após o prazo aceito e marcado, um pedido aberto por vez) e a correção da corrida entre aprovar e pedir alteração.
