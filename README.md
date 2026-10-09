@@ -46,201 +46,26 @@ Qualquer outra combinação devolve **409** com o motivo (ex.: "a versão 1 aind
 - **Aprovar encerra**: aprova sempre a versão mais recente e grava `approved_version`. Depois disso nova versão, novo pedido e nova aprovação → 409.
 - **Versões são só acréscimo**: a versão nova entra no fim da lista com `in_response_to` apontando o pedido que ela atende; as anteriores não mudam.
 
-## Endpoints e exemplos
+## Endpoints
 
-Exemplos reais, gerados com `npm start` e `curl` em 2026-10-09. O JSON foi só indentado; onde a resposta repete a anterior, o texto diz isso em vez de colar de novo.
+| Método e rota | Quem | Sucesso | Erros principais |
+|---|---|---|---|
+| `POST /scripts` | criador | 201, versão 1 em `in_review` | 400 sem ator, 403 ator errado, 422 sem `campaign_id` ou sem texto |
+| `GET /scripts/:id` | qualquer um | 200 com estado, versões, pedidos e `allowed_actions` | 404 |
+| `POST /scripts/:id/change-requests` | marca | 200, vai para `changes_requested` | 422 sem motivo, sem prazo ou com prazo vencido; 409 fora de `in_review` |
+| `POST /scripts/:id/versions` | criador | 200, versão N+1 em `in_review` | 422 sem texto; 409 fora de `changes_requested` ou depois de aprovado |
+| `POST /scripts/:id/approve` | marca | 200, `approved` com `approved_version` | 409 com pedido aberto ou já aprovado; 403 se o criador tentar |
 
-### Criador envia o roteiro
+O fluxo inteiro em quatro chamadas:
 
-```http
-POST /scripts
-X-Actor: creator
-Content-Type: application/json
-
-{"campaign_id":"cmp_77","content":"Abertura: unboxing do fone em 15s."}
+```bash
+curl -s -X POST localhost:3003/scripts -H "X-Actor: creator" -H "content-type: application/json" -d "{\"campaign_id\":\"cmp_77\",\"content\":\"Abertura: unboxing do fone em 15s.\"}"
+curl -s -X POST localhost:3003/scripts/scr_1/change-requests -H "X-Actor: brand" -H "content-type: application/json" -d "{\"reason\":\"Citar o cupom CONTY10 nos primeiros 5 segundos.\",\"deadline\":\"2026-10-12\"}"
+curl -s -X POST localhost:3003/scripts/scr_1/versions -H "X-Actor: creator" -H "content-type: application/json" -d "{\"content\":\"Abertura: unboxing do fone; cupom CONTY10 aos 3s.\"}"
+curl -s -X POST localhost:3003/scripts/scr_1/approve -H "X-Actor: brand"
 ```
 
-```json
-HTTP 201
-{
-  "id": "scr_1",
-  "campaign_id": "cmp_77",
-  "status": "in_review",
-  "current_version": 1,
-  "approved_at": null,
-  "approved_version": null,
-  "versions": [
-    {
-      "number": 1,
-      "content": "Abertura: unboxing do fone em 15s.",
-      "submitted_at": "2026-10-09T15:18:33.959Z",
-      "in_response_to": null,
-      "submitted_after_deadline": false
-    }
-  ],
-  "change_requests": [],
-  "allowed_actions": [
-    { "action": "request_changes", "actor": "brand", "method": "POST", "path": "/scripts/scr_1/change-requests" },
-    { "action": "approve", "actor": "brand", "method": "POST", "path": "/scripts/scr_1/approve" }
-  ]
-}
-```
-
-### Marca pede alteração sem prazo, e com prazo vencido
-
-```http
-POST /scripts/scr_1/change-requests
-X-Actor: brand
-
-{"reason":"Citar o cupom CONTY10 nos primeiros 5 segundos."}
-```
-
-```json
-HTTP 422
-{"error":"pedido de alteração inválido","fields":{"deadline":"prazo é obrigatório: data AAAA-MM-DD no fuso America/Sao_Paulo"}}
-```
-
-```http
-POST /scripts/scr_1/change-requests
-X-Actor: brand
-
-{"reason":"Citar o cupom","deadline":"2026-10-01"}
-```
-
-```json
-HTTP 422
-{"error":"pedido de alteração inválido","fields":{"deadline":"prazo 2026-10-01 já passou em America/Sao_Paulo (valia até 2026-10-02T02:59:59.999Z)"}}
-```
-
-### Marca pede alteração
-
-```http
-POST /scripts/scr_1/change-requests
-X-Actor: brand
-
-{"reason":"Citar o cupom CONTY10 nos primeiros 5 segundos.","deadline":"2026-10-12"}
-```
-
-```json
-HTTP 200
-{
-  "id": "scr_1",
-  "campaign_id": "cmp_77",
-  "status": "changes_requested",
-  "current_version": 1,
-  "approved_at": null,
-  "approved_version": null,
-  "versions": [
-    {
-      "number": 1,
-      "content": "Abertura: unboxing do fone em 15s.",
-      "submitted_at": "2026-10-09T15:18:33.959Z",
-      "in_response_to": null,
-      "submitted_after_deadline": false
-    }
-  ],
-  "change_requests": [
-    {
-      "id": "chg_1",
-      "version": 1,
-      "reason": "Citar o cupom CONTY10 nos primeiros 5 segundos.",
-      "deadline": "2026-10-12",
-      "deadline_time_zone": "America/Sao_Paulo",
-      "deadline_ends_at": "2026-10-13T02:59:59.999Z",
-      "requested_at": "2026-10-09T15:18:34.120Z",
-      "resolved_by_version": null,
-      "overdue": false
-    }
-  ],
-  "allowed_actions": [
-    { "action": "submit_version", "actor": "creator", "method": "POST", "path": "/scripts/scr_1/versions" }
-  ]
-}
-```
-
-`GET /scripts/scr_1` nesse momento devolve exatamente o mesmo corpo.
-
-### Criador reenvia
-
-```http
-POST /scripts/scr_1/versions
-X-Actor: creator
-
-{"content":"Abertura: unboxing do fone; cupom CONTY10 aos 3s."}
-```
-
-Resposta 200 com `status: "in_review"`, `current_version: 2`, as duas versões e o pedido `chg_1` com `resolved_by_version: 2` (igual ao `GET` abaixo, sem a aprovação).
-
-### Marca aprova
-
-```http
-POST /scripts/scr_1/approve
-X-Actor: brand
-```
-
-```json
-HTTP 200
-{
-  "id": "scr_1",
-  "campaign_id": "cmp_77",
-  "status": "approved",
-  "current_version": 2,
-  "approved_at": "2026-10-09T15:18:34.288Z",
-  "approved_version": 2,
-  "versions": [
-    {
-      "number": 1,
-      "content": "Abertura: unboxing do fone em 15s.",
-      "submitted_at": "2026-10-09T15:18:33.959Z",
-      "in_response_to": null,
-      "submitted_after_deadline": false
-    },
-    {
-      "number": 2,
-      "content": "Abertura: unboxing do fone; cupom CONTY10 aos 3s.",
-      "submitted_at": "2026-10-09T15:18:34.228Z",
-      "in_response_to": "chg_1",
-      "submitted_after_deadline": false
-    }
-  ],
-  "change_requests": [
-    {
-      "id": "chg_1",
-      "version": 1,
-      "reason": "Citar o cupom CONTY10 nos primeiros 5 segundos.",
-      "deadline": "2026-10-12",
-      "deadline_time_zone": "America/Sao_Paulo",
-      "deadline_ends_at": "2026-10-13T02:59:59.999Z",
-      "requested_at": "2026-10-09T15:18:34.120Z",
-      "resolved_by_version": 2,
-      "overdue": false
-    }
-  ],
-  "allowed_actions": []
-}
-```
-
-### Depois de aprovado
-
-```http
-POST /scripts/scr_1/versions            X-Actor: creator   {"content":"v3"}
-POST /scripts/scr_1/change-requests     X-Actor: brand     {"reason":"Trocar a trilha.","deadline":"2026-10-14"}
-```
-
-```json
-HTTP 409
-{"error":"roteiro já aprovado na versão 2; a aprovação encerra a revisão"}
-```
-
-```http
-POST /scripts/scr_1/approve
-X-Actor: creator
-```
-
-```json
-HTTP 403
-{"error":"só a marca pode executar approve"}
-```
+Os request e response completos de cada passo, inclusive os erros 422, 409 e 403, estão em [EXEMPLOS.md](EXEMPLOS.md). Foram gerados com `npm start` e `curl`.
 
 ## Testes
 
